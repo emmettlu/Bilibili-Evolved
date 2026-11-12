@@ -12,7 +12,7 @@ const RAW_BASE =
   'https://raw.githubusercontent.com/emmettlu/Bilibili-Evolved/refs/heads/safari/userscripts/dist'
 const OUT_NAME = 'bilibili-evolved.safari'
 // Bump when adapter.js changes so Userscripts sees a newer version
-const ADAPTER_REVISION = 2
+const ADAPTER_REVISION = 3
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -34,7 +34,23 @@ if (endIndex < 0) {
   throw new Error('metadata block not found')
 }
 const header = original.slice(0, endIndex)
-const body = original.slice(endIndex + end.length)
+const body = patchFeatureLoader(original.slice(endIndex + end.length))
+
+// The feature loader evaluates component code inside `with (proxy)`, whose get trap returns
+// window[name] unbound. Bare calls like btoa() then receive the proxy as `this`, which WebKit
+// rejects in page context. Route the value through __bevBindGlobal (defined in adapter.js).
+function patchFeatureLoader(code) {
+  const trap = /get:\((\w+),(\w+)\)=>(\w+)\.has\(\2\)\?\3\.get\(\2\):window\[\2\]/g
+  const count = code.match(trap)?.length ?? 0
+  if (count !== 1) {
+    throw new Error(`feature loader get trap: expected 1 match, found ${count}`)
+  }
+  return code.replace(
+    trap,
+    (_, target, name, map) =>
+      `get:(${target},${name})=>${map}.has(${name})?${map}.get(${name}):__bevBindGlobal(window[${name}])`,
+  )
+}
 
 // Inline lodash, verified against the sha256 pinned by upstream @require
 const requireMatch = header.match(/@require\s+(\S*lodash\S*)#sha256=([0-9a-f]+)/)

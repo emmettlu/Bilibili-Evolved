@@ -219,6 +219,21 @@ function bilibiliEvolvedMain(cfg, directPort) {
   const GM_registerMenuCommand = () => ++menuId
   const GM_unregisterMenuCommand = () => {}
   const unsafeWindow = window
+  // Used by the patched feature loader (see build.mjs): bind native window methods so they
+  // work when called through the loader's `with (proxy)` scope. Constructors are left as is,
+  // and eval must stay unbound so the loader's `eval(code)` remains a direct eval.
+  const boundGlobals = new WeakMap()
+  const __bevBindGlobal = value => {
+    if (typeof value !== 'function' || 'prototype' in value || value === eval) {
+      return value
+    }
+    let bound = boundGlobals.get(value)
+    if (!bound) {
+      bound = value.bind(window)
+      boundGlobals.set(value, bound)
+    }
+    return bound
+  }
 
   // The bundle assigns its own Vue to window.Vue on startup and later reads the bare `Vue`
   // global, but bilibili pages assign their own Vue to window.Vue afterwards, which breaks
