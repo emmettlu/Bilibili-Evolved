@@ -1,0 +1,44 @@
+name: Safari Userscripts
+
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - safari/userscripts
+    paths:
+      - safari/**
+      - .github/workflows/safari-userscripts.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: safari-userscripts
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: safari/userscripts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build from upstream
+        id: build
+        run: echo "summary=$(node safari/build.mjs)" >> "$GITHUB_OUTPUT"
+      - name: Commit changes
+        run: |
+          git add dist
+          if git diff --cached --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "chore(dist): ${{ steps.build.outputs.summary }}"
+          git push
