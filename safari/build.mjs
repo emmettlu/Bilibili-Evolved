@@ -12,7 +12,7 @@ const RAW_BASE =
   'https://raw.githubusercontent.com/emmettlu/Bilibili-Evolved/refs/heads/safari/userscripts/dist'
 const OUT_NAME = 'bilibili-evolved.safari'
 // Bump when adapter.js changes so Userscripts sees a newer version
-const ADAPTER_REVISION = 3
+const ADAPTER_REVISION = 4
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -37,8 +37,9 @@ const header = original.slice(0, endIndex)
 const body = patchFeatureLoader(original.slice(endIndex + end.length))
 
 // The feature loader evaluates component code inside `with (proxy)`, whose get trap returns
-// window[name] unbound. Bare calls like btoa() then receive the proxy as `this`, which WebKit
-// rejects in page context. Route the value through __bevBindGlobal (defined in adapter.js).
+// window[name]. In page context that yields the page's Vue instead of the bundle's, and bare
+// calls like btoa() receive the proxy as `this`, which WebKit rejects. Resolve names through
+// __bevResolveGlobal (defined in adapter.js) instead.
 function patchFeatureLoader(code) {
   const trap = /get:\((\w+),(\w+)\)=>(\w+)\.has\(\2\)\?\3\.get\(\2\):window\[\2\]/g
   const count = code.match(trap)?.length ?? 0
@@ -48,7 +49,7 @@ function patchFeatureLoader(code) {
   return code.replace(
     trap,
     (_, target, name, map) =>
-      `get:(${target},${name})=>${map}.has(${name})?${map}.get(${name}):__bevBindGlobal(window[${name}])`,
+      `get:(${target},${name})=>${map}.has(${name})?${map}.get(${name}):__bevResolveGlobal(${name})`,
   )
 }
 
