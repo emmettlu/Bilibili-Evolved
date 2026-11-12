@@ -220,17 +220,81 @@ function bilibiliEvolvedMain(cfg, directPort) {
   const GM_unregisterMenuCommand = () => {}
   const unsafeWindow = window
 
+  // The bundle assigns its own Vue to window.Vue on startup and later reads the bare `Vue`
+  // global, but bilibili pages assign their own Vue to window.Vue afterwards, which breaks
+  // reactivity in lazily created panels. Capture the bundle's assignment into this local
+  // binding (which shadows the global for the bundle and direct-eval'd features) and keep
+  // window.Vue untouched for the page.
+  let Vue
   try {
-    // shadow AMD/CommonJS globals so lodash always attaches to window._
-    ;(function (define, module, exports) {
-  /*@@LODASH@@*/
-    }).call(window)
+    const pageVue = Object.getOwnPropertyDescriptor(window, 'Vue')
+    const restore = () => {
+      if (pageVue) {
+        Object.defineProperty(window, 'Vue', pageVue)
+      } else {
+        delete window.Vue
+      }
+    }
+    const captureVue = value => {
+      Vue = value
+      restore()
+    }
+    Object.defineProperty(window, 'Vue', {
+      configurable: true,
+      enumerable: pageVue?.enumerable ?? true,
+      get: () => (pageVue && ('value' in pageVue ? pageVue.value : pageVue.get?.call(window))),
+      set: captureVue,
+    })
+    // Init runs in microtasks; never leave the trap installed beyond that
+    setTimeout(() => {
+      if (Object.getOwnPropertyDescriptor(window, 'Vue')?.set === captureVue) {
+        restore()
+      }
+    })
   } catch (e) {
-    console.error('[Bilibili Evolved] failed to load lodash', e)
+    console.error('[Bilibili Evolved] failed to isolate Vue', e)
+  }
+
+  // Keep lodash and `_` private to the bundle: lodash attaches itself to window._ and the
+  // bundle defines a non-configurable window._ getter, both of which would leak into the page.
+  const pageUnderscore = Object.getOwnPropertyDescriptor(window, '_')
+  const restoreUnderscore = () => {
+    if (pageUnderscore) {
+      Object.defineProperty(window, '_', pageUnderscore)
+    } else {
+      delete window._
+    }
+  }
+  const lodash = (() => {
+    try {
+      // shadow AMD/CommonJS globals so lodash always attaches to window._
+      ;(function (define, module, exports) {
+  /*@@LODASH@@*/
+      }).call(window)
+      return window._
+    } catch (e) {
+      console.error('[Bilibili Evolved] failed to load lodash', e)
+      return undefined
+    } finally {
+      restoreUnderscore()
+    }
+  })()
+  const _ = lodash
+
+  // The bundle's synchronous startup runs `Object.defineProperty(window, "_", ...)`; skip only
+  // that call while the bundle body executes synchronously.
+  const { defineProperty } = Object
+  Object.defineProperty = function (target, key, descriptor) {
+    if (target === window && key === '_') {
+      return target
+    }
+    return defineProperty.call(this, target, key, descriptor)
   }
   try {
   /*@@MAIN@@*/
   } catch (e) {
     console.error('[Bilibili Evolved] init failed', e)
+  } finally {
+    Object.defineProperty = defineProperty
   }
 }

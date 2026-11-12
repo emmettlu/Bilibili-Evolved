@@ -12,7 +12,7 @@ const RAW_BASE =
   'https://raw.githubusercontent.com/emmettlu/Bilibili-Evolved/refs/heads/safari/userscripts/dist'
 const OUT_NAME = 'bilibili-evolved.safari'
 // Bump when adapter.js changes so Userscripts sees a newer version
-const ADAPTER_REVISION = 1
+const ADAPTER_REVISION = 2
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 

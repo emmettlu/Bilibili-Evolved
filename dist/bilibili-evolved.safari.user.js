@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            Bilibili Evolved
 // @namespace       https://github.com/emmettlu/Bilibili-Evolved/tree/safari/userscripts
-// @version         2.11.5.1
+// @version         2.11.5.2
 // @updateURL       https://raw.githubusercontent.com/emmettlu/Bilibili-Evolved/refs/heads/safari/userscripts/dist/bilibili-evolved.safari.meta.js
 // @downloadURL     https://raw.githubusercontent.com/emmettlu/Bilibili-Evolved/refs/heads/safari/userscripts/dist/bilibili-evolved.safari.user.js
 // @description     强大的哔哩哔哩增强脚本 (Safari Userscripts 适配版)
@@ -257,9 +257,55 @@ function bilibiliEvolvedMain(cfg, directPort) {
   const GM_unregisterMenuCommand = () => {}
   const unsafeWindow = window
 
+  // The bundle assigns its own Vue to window.Vue on startup and later reads the bare `Vue`
+  // global, but bilibili pages assign their own Vue to window.Vue afterwards, which breaks
+  // reactivity in lazily created panels. Capture the bundle's assignment into this local
+  // binding (which shadows the global for the bundle and direct-eval'd features) and keep
+  // window.Vue untouched for the page.
+  let Vue
   try {
-    // shadow AMD/CommonJS globals so lodash always attaches to window._
-    ;(function (define, module, exports) {
+    const pageVue = Object.getOwnPropertyDescriptor(window, 'Vue')
+    const restore = () => {
+      if (pageVue) {
+        Object.defineProperty(window, 'Vue', pageVue)
+      } else {
+        delete window.Vue
+      }
+    }
+    const captureVue = value => {
+      Vue = value
+      restore()
+    }
+    Object.defineProperty(window, 'Vue', {
+      configurable: true,
+      enumerable: pageVue?.enumerable ?? true,
+      get: () => (pageVue && ('value' in pageVue ? pageVue.value : pageVue.get?.call(window))),
+      set: captureVue,
+    })
+    // Init runs in microtasks; never leave the trap installed beyond that
+    setTimeout(() => {
+      if (Object.getOwnPropertyDescriptor(window, 'Vue')?.set === captureVue) {
+        restore()
+      }
+    })
+  } catch (e) {
+    console.error('[Bilibili Evolved] failed to isolate Vue', e)
+  }
+
+  // Keep lodash and `_` private to the bundle: lodash attaches itself to window._ and the
+  // bundle defines a non-configurable window._ getter, both of which would leak into the page.
+  const pageUnderscore = Object.getOwnPropertyDescriptor(window, '_')
+  const restoreUnderscore = () => {
+    if (pageUnderscore) {
+      Object.defineProperty(window, '_', pageUnderscore)
+    } else {
+      delete window._
+    }
+  }
+  const lodash = (() => {
+    try {
+      // shadow AMD/CommonJS globals so lodash always attaches to window._
+      ;(function (define, module, exports) {
   /**
  * @license
  * Lodash <https://lodash.com/>
@@ -401,9 +447,25 @@ u&&(Z.prototype[t]=function(){var t=this.__wrapped__,o=e?[1]:arguments,f=t insta
 var t=_l[n],r=/^(?:push|sort|unshift)$/.test(n)?"tap":"thru",e=/^(?:pop|shift)$/.test(n);Z.prototype[n]=function(){var n=arguments;if(e&&!this.__chain__){var u=this.value();return t.apply(bh(u)?u:[],n)}return this[r](function(r){return t.apply(bh(r)?r:[],n)})}}),ue(Ct.prototype,function(n,t){var r=Z[t];if(r){var e=r.name+"";bl.call(fs,e)||(fs[e]=[]),fs[e].push({name:t,func:r})}}),fs[Qu(X,vn).name]=[{name:"wrapper",func:X}],Ct.prototype.clone=$t,Ct.prototype.reverse=Yt,Ct.prototype.value=Qt,Z.prototype.at=Qs,
 Z.prototype.chain=tf,Z.prototype.commit=rf,Z.prototype.next=ef,Z.prototype.plant=of,Z.prototype.reverse=ff,Z.prototype.toJSON=Z.prototype.valueOf=Z.prototype.value=cf,Z.prototype.first=Z.prototype.head,Ul&&(Z.prototype[Ul]=uf),Z},be=de();"function"==typeof define&&"object"==typeof define.amd&&define.amd?(re._=be,define(function(){return be})):ue?((ue.exports=be)._=be,ee._=be):re._=be}).call(this);
 
-    }).call(window)
-  } catch (e) {
-    console.error('[Bilibili Evolved] failed to load lodash', e)
+      }).call(window)
+      return window._
+    } catch (e) {
+      console.error('[Bilibili Evolved] failed to load lodash', e)
+      return undefined
+    } finally {
+      restoreUnderscore()
+    }
+  })()
+  const _ = lodash
+
+  // The bundle's synchronous startup runs `Object.defineProperty(window, "_", ...)`; skip only
+  // that call while the bundle body executes synchronously.
+  const { defineProperty } = Object
+  Object.defineProperty = function (target, key, descriptor) {
+    if (target === window && key === '_') {
+      return target
+    }
+    return defineProperty.call(this, target, key, descriptor)
   }
   try {
   /* eslint-disable */ /* spell-checker: disable */
@@ -483,5 +545,7 @@ console=window.console;const{loadAllUserComponents:d}=await Promise.resolve().th
 
   } catch (e) {
     console.error('[Bilibili Evolved] init failed', e)
+  } finally {
+    Object.defineProperty = defineProperty
   }
 }
