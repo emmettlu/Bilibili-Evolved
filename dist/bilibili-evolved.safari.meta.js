@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            Bilibili Evolved
 // @namespace       https://github.com/emmettlu/Bilibili-Evolved/tree/safari/userscripts
-// @version         2.11.5.4
+// @version         2.12.0.4
 // @updateURL       https://raw.githubusercontent.com/emmettlu/Bilibili-Evolved/refs/heads/safari/userscripts/dist/bilibili-evolved.safari.meta.js
 // @downloadURL     https://raw.githubusercontent.com/emmettlu/Bilibili-Evolved/refs/heads/safari/userscripts/dist/bilibili-evolved.safari.user.js
 // @description     强大的哔哩哔哩增强脚本 (Safari Userscripts 适配版)
